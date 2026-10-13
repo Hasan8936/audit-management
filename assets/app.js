@@ -146,7 +146,7 @@ const openM=(h,w)=>{$('#mb').className='md'+(w?' w':'');$('#mb').innerHTML=h;$('
 const closeM=()=>{$('#m').hidden=true};
 function toast(m){const e=$('#ts');e.textContent=m;e.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>e.hidden=true,4000)}
 const tbl=(h,rows,cls='')=>`<div class=tw><table class="${cls}"><tr>${h.map(x=>`<th>${x}`).join('')}${rows.map(r=>`<tr ${r[0]?`class=k onclick="${r[0]}"`:''}>${r.slice(1).map(c=>`<td>${c}`).join('')}`).join('')}</table></div>`;
-const bars=rows=>{const mx=Math.max(1,...rows.map(r=>r[1]));return rows.map(([l,n,k,a])=>`<div class="bar ${k}" onclick="${a}"><span>${l}</span><em><u style="width:${n*100/mx}%"></u></em><b>${n}</b></div>`).join('')};
+const bars=rows=>{const mx=Math.max(1,...rows.map(r=>r[1]));return`<div class=bar-chart>${rows.map(([l,n,k,a])=>`<button class="bar ${k}" type=button aria-label="${esc(l)}: ${n}" onclick="${a}"><span class=bar-label>${esc(l)}</span><b>${n}</b><span class=bar-track><i style="width:${n*100/mx}%"></i></span></button>`).join('')}</div>`};
 const csvOut=(name,rows)=>{const t=rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=name;a.click()};
 /* custom fields (flexfields) */
 const cfs=o=>D.setup.cf.filter(c=>c.obj===o);
