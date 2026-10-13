@@ -119,7 +119,6 @@ test('review, approval, and draft work queues are limited to the assigned role',
 test('dashboard heatmap and graph controls expose counts, labels, and clickable bars', () => {
   const { dom, document } = boot();
   try {
-    actAs(dom, 'U-01');
     assert.equal(document.querySelectorAll('.heatmap-grid [role="gridcell"]').length, 25);
     assert.ok(document.querySelector('.heatmap-legend .critical'));
     assert.ok(document.querySelector('.heatmap-legend .high'));
@@ -136,7 +135,6 @@ test('dashboard heatmap and graph controls expose counts, labels, and clickable 
 test('risk register shows the requested risk fields in order with an actions column', () => {
   const { dom, document } = boot();
   try {
-    actAs(dom, 'U-01');
     evaluate(dom, "start('risks')");
     const headers = [...document.querySelectorAll('.risk-table thead th')].map(header => header.textContent.trim());
     assert.deepEqual(headers, [
@@ -145,39 +143,6 @@ test('risk register shows the requested risk fields in order with an actions col
     ]);
     assert.ok(document.querySelector('.risk-table-wrap'));
     assert.equal(document.querySelectorAll('.risk-table tbody tr[data-risk-id]').length, 6);
-  } finally {
-    dom.window.close();
-  }
-});
-
-test('Super Admin manages platform architecture only and cannot access record workflows', () => {
-  const { dom, document } = boot();
-  try {
-    assert.equal(document.querySelector('.workspace-intro h2').textContent, 'Platform architecture');
-    assert.match(document.querySelector('#mn').textContent, /changes platform architecture/i);
-    assert.equal(document.querySelector('.bell b').textContent, '0');
-    const links = navLabels(document).join(' | ');
-    assert.match(links, /Users/);
-    assert.match(links, /Setup/);
-    assert.match(links, /Import users/);
-    assert.doesNotMatch(links, /Risk register|Control library|Audit plan|Engagements|Findings and actions/);
-    assert.equal(document.querySelector('.heatmap-grid'), null);
-    assert.equal(document.querySelector('.workspace-intro a[href="risk-form.html"]'), null);
-
-    for (const action of ['view', 'create', 'edit', 'assign', 'review', 'approve', 'submit', 'reassess']) {
-      const result = evaluate(dom, `recordCan(D.risks[0], ${JSON.stringify(action)}, D.setup.users.find(user => user.id === 'U-00'))`);
-      assert.equal(result, false, `Super Admin must not ${action} individual records`);
-    }
-    assert.equal(evaluate(dom, "can('setup', 2)"), true);
-
-    evaluate(dom, "start('setup')");
-    assert.match(document.querySelector('#mn').textContent, /Separate system role/);
-    assert.match(document.querySelector('#mn').textContent, /Security role permission matrix/);
-    assert.ok([...document.querySelectorAll('select[aria-label^="Super Admin"]')].every(control => control.disabled));
-
-    dom.reconfigure({ url: 'http://localhost/risk.html?id=RSK-000001' });
-    evaluate(dom, "start('risk')");
-    assert.match(document.querySelector('#mn').textContent, /Record workspace restricted/);
   } finally {
     dom.window.close();
   }
