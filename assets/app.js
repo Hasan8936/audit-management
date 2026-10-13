@@ -9,6 +9,14 @@ const OT=['Group','Country','Legal entity','Business unit','Department'];
 const FS=['Draft','Auditor Review','Management Response','Approved','Remediation','Awaiting Verification','Closed'];
 const ES=['Draft','Planning','Fieldwork','Review','Reporting','Management Response','Closed'];
 const CFT=['Text','Long text','Number','Date','Boolean','Dropdown','Multi-select'];
+const RECORD_ROLES=['Super Admin','Owner','Editor','Viewer','Reviewer','Approver'];
+const RECORD_MATRIX=[
+ ['Create record',['Super Admin','Owner']],['View assigned record',['Super Admin','Owner','Editor','Viewer','Reviewer','Approver']],
+ ['Edit record details',['Super Admin','Owner','Editor']],['Assign users',['Super Admin','Owner']],['Modify security assignments',['Super Admin','Owner']],
+ ['Transfer ownership',['Super Admin','Owner']],['Submit record for review',['Owner','Editor']],['Record review decision',['Reviewer']],['Record approval decision',['Approver']],
+ ['Provide review remarks',['Reviewer']],['Provide approval remarks',['Approver']]
+];
+const rolePerms=(risk,other=1,setup=0)=>Object.fromEntries(MODS.map(([k])=>[k,k==='risks'?risk:k==='setup'?setup:other]));
 
 /* ---------- seed ---------- */
 function mkF(id,t,e,r,c,sv,s,own,due,x,resp='',ver=''){return{id,t,e,r,c,sv,s,own,due,cd:x[0],cr:x[1],ca:x[2],ef:x[3],rc:x[4],resp,ver,ext:null,x:{}}}
@@ -17,12 +25,14 @@ function seedSetup(){
   const P=x=>Object.fromEntries(MODS.map((m,i)=>[m[0],+x[i]])),L=a=>a.map(v=>({v,on:1}));
   return{
   users:[
-   {id:'U-00',n:'Super Admin',em:'superadmin@northwind.example',roles:['Administrator'],sc:'Northwind Group',on:1},
-   {id:'U-01',n:'Priya Nair',em:'priya.nair@northwind.example',roles:['CAE'],sc:'Northwind Group',on:1},
-   {id:'U-02',n:'A. Rahman',em:'a.rahman@northwind.example',roles:['Audit Manager'],sc:'Northwind Group',on:1},
-   {id:'U-03',n:'S. Mehta',em:'s.mehta@northwind.example',roles:['Lead Auditor'],sc:'Northwind India Pvt Ltd',on:1},
-   {id:'U-04',n:'R. Das',em:'r.das@northwind.example',roles:['Process Owner'],sc:'Procurement',on:1}],
-  roles:{Administrator:P('333333'),CAE:P('333330'),'Audit Manager':P('223330'),'Lead Auditor':P('222220'),Auditor:P('112220'),'Process Owner':P('110010')},
+   {id:'U-00',n:'Super Admin',em:'superadmin@northwind.example',roles:['Super Admin','Administrator'],sc:'Northwind Group',on:1},
+   {id:'U-01',n:'Owner',em:'owner@northwind.example',roles:['Owner','Audit Manager'],sc:'Northwind Group',on:1},
+   {id:'U-02',n:'Editor',em:'editor@northwind.example',roles:['Editor','Lead Auditor'],sc:'Northwind Group',on:1},
+   {id:'U-03',n:'Viewer',em:'viewer@northwind.example',roles:['Viewer','Auditor'],sc:'Northwind Group',on:1},
+   {id:'U-04',n:'Reviewer',em:'reviewer@northwind.example',roles:['Reviewer','Audit Manager'],sc:'Northwind Group',on:1},
+   {id:'U-05',n:'Approver',em:'approver@northwind.example',roles:['Approver','CAE'],sc:'Northwind Group',on:1}],
+  roles:{'Super Admin':P('333333'),Owner:rolePerms(2),Editor:rolePerms(2),Viewer:rolePerms(1),Reviewer:rolePerms(1),Approver:rolePerms(1),
+   Administrator:P('333333'),CAE:P('333330'),'Audit Manager':P('223330'),'Lead Auditor':P('222220'),Auditor:P('112220'),'Process Owner':P('110010')},
   sod:[['Auditor','Process Owner'],['Lead Auditor','Process Owner'],['Audit Manager','Process Owner']],
   org:[['O-01','Northwind Group',0,null],['O-02','India',1,'O-01'],['O-03','United Kingdom',1,'O-01'],['O-04','Northwind India Pvt Ltd',2,'O-02'],['O-05','Northwind UK Ltd',2,'O-03'],['O-06','Finance Systems',3,'O-04'],['O-07','Procurement',3,'O-04'],['O-08','HR',3,'O-04'],['O-09','Group Finance',3,'O-05'],['O-10','Customer Operations',3,'O-05'],['O-11','Operations',3,'O-05'],['O-12','Accounts Payable',4,'O-07'],['O-13','Payroll Operations',4,'O-08'],['O-14','Identity and Access',4,'O-06'],['O-15','Financial Reporting',4,'O-09'],['O-16','Customer Support',4,'O-10']].map(([id,n,t,p])=>({id,n,t,p})),
   lk:{'Audit type':L(['Financial','Operational','IT','Compliance']),
@@ -48,7 +58,8 @@ function seed(){
    mkR('Customer data privacy non-compliance',{id:'RSK-000004',desc:'Personal data is processed without valid consent or retained beyond permitted periods.',type:'Regulatory',owner:'Privacy Officer',persp:{ent:'Northwind UK Ltd',bu:'Customer Operations',dept:'Customer Support',fn:'Legal',loc:'Manchester',reg:'EMEA',proc:'Data governance',sub:'Consent management'},ev:'Customer data is used without a valid legal basis.',cons:[{cat:'Regulatory',t:'Fines and enforcement notices'},{cat:'Customer',t:'Loss of customer trust'}],inh:[4,4],res:[3,3]}),
    mkR('Key vendor outage',{id:'RSK-000005',desc:'A critical vendor fails to deliver a service for an extended period.',type:'Operational',owner:'Head of Operations',persp:{ent:'Northwind UK Ltd',bu:'Operations',dept:'',fn:'Operations',loc:'London',reg:'EMEA',proc:'Third-party management',sub:''},ev:'A critical vendor suffers a multi-day outage.',cons:[{cat:'Operational',t:'Service interruption to customers'}],inh:[3,4],res:[2,3]}),
    mkR('Payroll processing errors',{id:'RSK-000006',desc:'Employees are paid incorrect amounts due to input or calculation errors.',type:'Operational',owner:'HR Manager',persp:{ent:'Northwind India Pvt Ltd',bu:'HR',dept:'Payroll Operations',fn:'People',loc:'Mumbai',reg:'APAC',proc:'HR and payroll',sub:'Payroll run'},ev:'A payroll run contains incorrect pay values.',cons:[{cat:'Financial',t:'Over or under payment of staff'}],inh:[3,3],res:[2,2]})];
-  risks.forEach(r=>{r.hist=[{ver:1,d:r.cd,u:'Seed',inh:r.inh,res:r.res,am:r.am,n:'Initial assessment'}];r.cmt=[]});
+  risks.forEach(r=>{r.hist=[{ver:1,d:r.cd,u:'Seed',inh:r.inh,res:r.res,am:r.am,n:'Initial assessment'}];r.cmt=[];
+    r.access={owner:'U-01',editors:['U-02'],viewers:['U-03'],reviewers:['U-04'],approvers:['U-05']};r.review=[]});
   risks[0].cmt=[{id:'CM-1',p:null,u:'Priya Nair',d:day(-20)+' 10:00',t:'Leaver process remains the main driver. Review with HR.',h:[]}];
   return{v:DV,me:'U-00',
   risks,
@@ -67,7 +78,17 @@ function seed(){
   setup:seedSetup()}}
 
 /* ---------- store ---------- */
-let D=(()=>{try{const x=JSON.parse(localStorage.getItem(KEY));if(x&&x.v===DV)return x}catch(e){}return seed()})();
+let D=(()=>{try{const x=JSON.parse(localStorage.getItem(KEY));if(x&&x.v===DV)return upgrade(x)}catch(e){}return seed()})();
+function upgrade(d){
+  const P=x=>Object.fromEntries(MODS.map((m,i)=>[m[0],+x[i]]));
+  d.setup.roles=d.setup.roles||{};
+  const demoNames={'U-01':['Risk Owner','Owner'],'U-02':['Risk Editor','Editor'],'U-03':['Risk Viewer','Viewer'],'U-04':['Risk Reviewer','Reviewer'],'U-05':['Risk Approver','Approver']};
+  d.setup.users.forEach(u=>{const n=demoNames[u.id];if(n&&u.n===n[0])u.n=n[1]});
+  const defaults={'Super Admin':P('333333'),Owner:rolePerms(2),Editor:rolePerms(2),Viewer:rolePerms(1),Reviewer:rolePerms(1),Approver:rolePerms(1)};
+  Object.entries(defaults).forEach(([r,p])=>{if(!d.setup.roles[r])d.setup.roles[r]=p});
+  d.risks.forEach(r=>{r.access=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};r.review=r.review||[]});
+  return d
+}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}};
 const meU=()=>D.setup.users.find(u=>u.id===D.me)||D.setup.users[0];
 const log=(id,m)=>{D.log.unshift({t:new Date().toISOString().slice(0,16).replace('T',' '),u:meU().n,id,m});save()};
@@ -76,16 +97,34 @@ const nid=(p,a)=>p+'-'+String(a.length+1).padStart(2,'0');
 const rkId=()=>{const m=D.setup.meth,mx=D.risks.reduce((a,r)=>Math.max(a,+r.id.replace(/\D/g,'')||0),0);return m.idp+String(mx+1).padStart(m.idd,'0')};
 /* permissions */
 const permOf=(u,mod)=>Math.max(0,...u.roles.map(r=>(D.setup.roles[r]||{})[mod]||0));
-const can=(mod,l)=>permOf(meU(),mod)>=l;
+const can=(mod,l)=>meU().on&&permOf(meU(),mod)>=l;
 const need=(mod,l,msg)=>{if(can(mod,l))return true;toast(msg||'Your role does not allow this action. Switch the "Acting as" user in the header to try other roles.');return false};
 const kids=id=>D.setup.org.filter(o=>o.p===id).flatMap(o=>[o.n,...kids(o.id)]);
 const scopeNames=u=>{const o=D.setup.org.find(x=>x.n===u.sc);return o?(o.t===0?null:[o.n,...kids(o.id)]):[]};
-const visible=r=>{const s=scopeNames(meU());if(s===null)return true;const p=r.persp||{};return [p.ent,p.bu,p.dept].some(v=>v&&s.includes(v))};
+const withinScope=(r,u=meU())=>{const s=scopeNames(u);if(s===null)return true;const p=r.persp||{};return [p.ent,p.bu,p.dept].some(v=>v&&s.includes(v))};
+const systemAdmin=u=>u.roles.some(r=>r==='Super Admin'||r==='Administrator');
+const recordCan=(r,action,u=meU())=>{
+  if(!u||!u.on)return false;
+  const scoped=!r||withinScope(r,u),roles=u.roles||[],dedicated=roles.some(x=>RECORD_ROLES.includes(x));
+  if(!scoped)return false;
+  if(action==='create')return roles.includes('Owner')||roles.includes('Super Admin')||(!dedicated&&can('risks',2));
+  if(!r)return false;
+  const a=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};
+  const assigned=(role,ids)=>roles.includes(role)&&ids.includes(u.id);
+  if(action==='review')return !roles.includes('Owner')&&a.owner!==u.id&&!roles.includes('Approver')&&assigned('Reviewer',a.reviewers||[]);
+  if(action==='approve')return !roles.includes('Owner')&&a.owner!==u.id&&!roles.includes('Reviewer')&&assigned('Approver',a.approvers||[]);
+  if(systemAdmin(u))return ['view','edit','assign','deactivate','reactivate','submit','reassess'].includes(action);
+  if(roles.includes('Owner')&&a.owner===u.id)return ['view','edit','assign','deactivate','reactivate','submit','reassess'].includes(action);
+  if(assigned('Editor',a.editors||[]))return ['view','edit','submit','reassess'].includes(action);
+  if(assigned('Viewer',a.viewers||[])||assigned('Reviewer',a.reviewers||[])||assigned('Approver',a.approvers||[]))return action==='view';
+  return !dedicated&&can('risks',action==='view'?1:action==='edit'||action==='submit'||action==='reassess'?2:action==='deactivate'||action==='reactivate'?3:99);
+};
+const visible=r=>recordCan(r,'view');
 /* scoring */
 const MODELS={'Standard 5x5':(l,i)=>l*i,'Impact-weighted':(l,i)=>Math.min(25,Math.round(l*i*(i>=4?1.25:1)))};
 const sc=(a,m)=>(MODELS[m]||MODELS['Standard 5x5'])(a[0],a[1]);
 const lv=s=>{const q=D.setup.meth.t;return s>=q[0]?'Critical':s>=q[1]?'High':s>=q[2]?'Medium':'Low'};
-const KC={Critical:'c',High:'h',Medium:'m',Low:'l',Effective:'l',Partial:'m',Ineffective:'c',Overdue:'c',Active:'l',Draft:'n','Pending Approval':'m',Inactive:'n',Approved:'l',Closed:'n',Valid:'l',Warning:'m',Error:'c'};
+const KC={Critical:'c',High:'h',Medium:'m',Low:'l',Effective:'l',Partial:'m',Ineffective:'c',Overdue:'c',Active:'l',Draft:'n','Pending Review':'m','Pending Approval':'m',Inactive:'n',Approved:'l',Closed:'n',Valid:'l',Warning:'m',Error:'c'};
 const pill=t=>`<span class="pill ${KC[t]||''}">${esc(t)}</span>`;
 const rk=id=>D.risks.find(x=>x.id===id),ct=id=>D.ctrls.find(x=>x.id===id),en=id=>D.engs.find(x=>x.id===id),fn=id=>D.finds.find(x=>x.id===id);
 const rS=r=>sc(r.res,r.am),iS=r=>sc(r.inh,r.am);
@@ -114,11 +153,12 @@ const cfRead=e=>e.multiple?[...e.selectedOptions].map(o=>o.value).join(';'):e.va
 const cfGet=o=>Object.fromEntries(cfs(o).map(c=>[c.id,cfRead($('#cf_'+c.id))]));
 const cfMiss=(o,x)=>cfs(o).some(c=>c.req&&!String(x[c.id]||'').trim());
 /* notifications (assessment, approval, overdue, escalation) */
-function notes(){const n=[],u=meU(),W=D.setup.wf.risk;
-  D.risks.filter(r=>r.st==='Pending Approval').forEach(r=>{const role=W[r.ap];if(role&&u.roles.includes(role))n.push(['Approval',`${r.id} ${r.n} awaits your approval as ${role}.`,`risk.html?id=${r.id}`])});
-  D.risks.filter(r=>r.st==='Active'&&r.nr<TODAY).forEach(r=>n.push(['Assessment due',`${r.id} reassessment was due ${r.nr}.`,`risk.html?id=${r.id}`]));
+function notes(){const n=[],u=meU();
+  D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Review'&&((r.access&&r.access.reviewers)||[]).includes(u.id)).forEach(r=>n.push(['Review',`${r.id} ${r.n} awaits your review.`,`risk.html?id=${r.id}`]));
+  D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Approval'&&((r.access&&r.access.approvers)||[]).includes(u.id)).forEach(r=>n.push(['Approval',`${r.id} ${r.n} awaits your approval.`,`risk.html?id=${r.id}`]));
+  D.risks.filter(r=>recordCan(r,'view')&&r.st==='Active'&&r.nr<TODAY).forEach(r=>n.push(['Assessment due',`${r.id} reassessment was due ${r.nr}.`,`risk.html?id=${r.id}`]));
   D.finds.filter(od).forEach(f=>n.push([f.sv==='Critical'||f.sv==='High'?'Escalation':'Overdue',`${f.id} action overdue since ${f.due} (${f.sv}).`,'findings.html']));
-  D.kris.filter(k=>k.val>k.thr).forEach(k=>n.push(['KRI breach',`${k.n}: ${k.val} against threshold ${k.thr}.`,`risk.html?id=${k.r}`]));return n}
+  D.kris.filter(k=>k.val>k.thr&&recordCan(rk(k.r),'view')).forEach(k=>n.push(['KRI breach',`${k.n}: ${k.val} against threshold ${k.thr}.`,`risk.html?id=${k.r}`]));return n}
 const showNotes=()=>{const n=notes();openM(`<h2>Notifications</h2><p class=sub>Assessment, approval, overdue and escalation alerts for ${esc(meU().n)}.</p>${n.length?tbl(['Type','Message'],n.map(x=>[`location='${x[2]}'`,pill(x[0]==='Escalation'||x[0]==='KRI breach'?'Critical':'Medium').replace(/>[^<]*</,'>'+x[0]+'<'),esc(x[1])])):'<p class=sub>Nothing needs attention.</p>'}<div class=act><button class="btn g" onclick=closeM()>Close</button></div>`)};
 
 /* ---------- shell ---------- */
