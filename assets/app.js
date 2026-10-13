@@ -9,22 +9,12 @@ const OT=['Group','Country','Legal entity','Business unit','Department'];
 const FS=['Draft','Auditor Review','Management Response','Approved','Remediation','Awaiting Verification','Closed'];
 const ES=['Draft','Planning','Fieldwork','Review','Reporting','Management Response','Closed'];
 const CFT=['Text','Long text','Number','Date','Boolean','Dropdown','Multi-select'];
-const SECURITY_ROLES=['Owner','Editor','Viewer','Reviewer','Approver'];
-const RECORD_ROLES=SECURITY_ROLES;
-const SYSTEM_ADMIN_ROLES=['Super Admin','Administrator'];
-const SECURITY_ROLE_DETAILS=[
- ['Owner','Primary individual responsible for maintaining and managing the record throughout its lifecycle.','Create · View · Edit · Assign/reassign users'],
- ['Editor','Individual responsible for updating and maintaining information within the assigned record.','View · Edit'],
- ['Viewer','Individual authorized to access records for information and monitoring purposes.','View only'],
- ['Reviewer','Individual responsible for reviewing submitted information and providing review decisions.','View · Review'],
- ['Approver','Individual responsible for providing formal approval or rejection of submitted records.','View · Approve/reject']
-];
+const RECORD_ROLES=['Super Admin','Owner','Editor','Viewer','Reviewer','Approver'];
 const RECORD_MATRIX=[
- ['Create new record',['Owner']],['View assigned record',['Owner','Editor','Viewer','Reviewer','Approver']],
- ['Edit record details',['Owner','Editor']],['Assign Editor',['Owner']],['Assign Viewer',['Owner']],
- ['Assign Reviewer',['Owner']],['Assign Approver',['Owner']],['Modify security assignments',['Owner']],
- ['Transfer ownership',['Owner']],['Submit record for review',['Owner','Editor']],['Record review decision',['Reviewer']],
- ['Record approval decision',['Approver']],['Provide review remarks',['Reviewer']],['Provide approval remarks',['Approver']]
+ ['Create record',['Super Admin','Owner']],['View assigned record',['Super Admin','Owner','Editor','Viewer','Reviewer','Approver']],
+ ['Edit record details',['Super Admin','Owner','Editor']],['Assign users',['Super Admin','Owner']],['Modify security assignments',['Super Admin','Owner']],
+ ['Transfer ownership',['Super Admin','Owner']],['Submit record for review',['Owner','Editor']],['Record review decision',['Reviewer']],['Record approval decision',['Approver']],
+ ['Provide review remarks',['Reviewer']],['Provide approval remarks',['Approver']]
 ];
 const rolePerms=(risk,other=1,setup=0)=>Object.fromEntries(MODS.map(([k])=>[k,k==='risks'?risk:k==='setup'?setup:other]));
 
@@ -112,17 +102,18 @@ const need=(mod,l,msg)=>{if(can(mod,l))return true;toast(msg||'Your role does no
 const kids=id=>D.setup.org.filter(o=>o.p===id).flatMap(o=>[o.n,...kids(o.id)]);
 const scopeNames=u=>{const o=D.setup.org.find(x=>x.n===u.sc);return o?(o.t===0?null:[o.n,...kids(o.id)]):[]};
 const withinScope=(r,u=meU())=>{const s=scopeNames(u);if(s===null)return true;const p=r.persp||{};return [p.ent,p.bu,p.dept].some(v=>v&&s.includes(v))};
-const systemAdmin=u=>(u?.roles||[]).some(r=>SYSTEM_ADMIN_ROLES.includes(r));
+const systemAdmin=u=>u.roles.some(r=>r==='Super Admin'||r==='Administrator');
 const recordCan=(r,action,u=meU())=>{
-  if(!u||!u.on||systemAdmin(u))return false;
+  if(!u||!u.on)return false;
   const scoped=!r||withinScope(r,u),roles=u.roles||[],dedicated=roles.some(x=>RECORD_ROLES.includes(x));
   if(!scoped)return false;
-  if(action==='create')return roles.includes('Owner')||(!dedicated&&can('risks',2));
+  if(action==='create')return roles.includes('Owner')||roles.includes('Super Admin')||(!dedicated&&can('risks',2));
   if(!r)return false;
   const a=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};
   const assigned=(role,ids)=>roles.includes(role)&&ids.includes(u.id);
-  if(action==='review')return a.owner!==u.id&&assigned('Reviewer',a.reviewers||[]);
-  if(action==='approve')return a.owner!==u.id&&assigned('Approver',a.approvers||[]);
+  if(action==='review')return !roles.includes('Owner')&&a.owner!==u.id&&!roles.includes('Approver')&&assigned('Reviewer',a.reviewers||[]);
+  if(action==='approve')return !roles.includes('Owner')&&a.owner!==u.id&&!roles.includes('Reviewer')&&assigned('Approver',a.approvers||[]);
+  if(systemAdmin(u))return ['view','edit','assign','deactivate','reactivate','submit','reassess'].includes(action);
   if(roles.includes('Owner')&&a.owner===u.id)return ['view','edit','assign','deactivate','reactivate','submit','reassess'].includes(action);
   if(assigned('Editor',a.editors||[]))return ['view','edit','submit','reassess'].includes(action);
   if(assigned('Viewer',a.viewers||[])||assigned('Reviewer',a.reviewers||[])||assigned('Approver',a.approvers||[]))return action==='view';
@@ -146,7 +137,7 @@ const openM=(h,w)=>{$('#mb').className='md'+(w?' w':'');$('#mb').innerHTML=h;$('
 const closeM=()=>{$('#m').hidden=true};
 function toast(m){const e=$('#ts');e.textContent=m;e.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>e.hidden=true,4000)}
 const tbl=(h,rows,cls='')=>`<div class=tw><table class="${cls}"><tr>${h.map(x=>`<th>${x}`).join('')}${rows.map(r=>`<tr ${r[0]?`class=k onclick="${r[0]}"`:''}>${r.slice(1).map(c=>`<td>${c}`).join('')}`).join('')}</table></div>`;
-const bars=rows=>{const mx=Math.max(1,...rows.map(r=>r[1]));return`<div class=bar-chart>${rows.map(([l,n,k,a])=>`<button class="bar ${k}" type=button aria-label="${esc(l)}: ${n}" onclick="${a}"><span class=bar-label>${esc(l)}</span><b>${n}</b><span class=bar-track><i style="width:${n*100/mx}%"></i></span></button>`).join('')}</div>`};
+const bars=rows=>{const mx=Math.max(1,...rows.map(r=>r[1]));return rows.map(([l,n,k,a])=>`<div class="bar ${k}" onclick="${a}"><span>${l}</span><em><u style="width:${n*100/mx}%"></u></em><b>${n}</b></div>`).join('')};
 const csvOut=(name,rows)=>{const t=rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=name;a.click()};
 /* custom fields (flexfields) */
 const cfs=o=>D.setup.cf.filter(c=>c.obj===o);
@@ -166,7 +157,7 @@ function notes(){const n=[],u=meU();
   D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Review'&&((r.access&&r.access.reviewers)||[]).includes(u.id)).forEach(r=>n.push(['Review',`${r.id} ${r.n} awaits your review.`,`risk.html?id=${r.id}`]));
   D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Approval'&&((r.access&&r.access.approvers)||[]).includes(u.id)).forEach(r=>n.push(['Approval',`${r.id} ${r.n} awaits your approval.`,`risk.html?id=${r.id}`]));
   D.risks.filter(r=>recordCan(r,'view')&&r.st==='Active'&&r.nr<TODAY).forEach(r=>n.push(['Assessment due',`${r.id} reassessment was due ${r.nr}.`,`risk.html?id=${r.id}`]));
-  D.finds.filter(f=>od(f)&&recordCan(rk(f.r),'view')).forEach(f=>n.push([f.sv==='Critical'||f.sv==='High'?'Escalation':'Overdue',`${f.id} action overdue since ${f.due} (${f.sv}).`,'findings.html']));
+  D.finds.filter(od).forEach(f=>n.push([f.sv==='Critical'||f.sv==='High'?'Escalation':'Overdue',`${f.id} action overdue since ${f.due} (${f.sv}).`,'findings.html']));
   D.kris.filter(k=>k.val>k.thr&&recordCan(rk(k.r),'view')).forEach(k=>n.push(['KRI breach',`${k.n}: ${k.val} against threshold ${k.thr}.`,`risk.html?id=${k.r}`]));return n}
 const showNotes=()=>{const n=notes();openM(`<h2>Notifications</h2><p class=sub>Assessment, approval, overdue and escalation alerts for ${esc(meU().n)}.</p>${n.length?tbl(['Type','Message'],n.map(x=>[`location='${x[2]}'`,pill(x[0]==='Escalation'||x[0]==='KRI breach'?'Critical':'Medium').replace(/>[^<]*</,'>'+x[0]+'<'),esc(x[1])])):'<p class=sub>Nothing needs attention.</p>'}<div class=act><button class="btn g" onclick=closeM()>Close</button></div>`)};
 
@@ -177,10 +168,8 @@ const NAV=[['Overview',[['dash','Dashboard','index.html','📊']]],
 const V={};let cur='dash';
 const NAVKEY={risk:'risks','risk-form':'risks'};
 function shell(){
-  const navAllowed=k=>systemAdmin(meU())?({dash:true,import:true,users:true,setup:true,trail:true}[k]||false):({dash:true,risks:can('risks',1),ctrls:can('ctrls',1),plan:can('plan',1),engs:can('engs',1),finds:can('finds',1),import:can('setup',1),users:can('setup',1),setup:can('setup',1),trail:true}[k]);
-  const navHtml=NAV.map(([h,l])=>{const items=l.filter(([k])=>navAllowed(k));return items.length?`<h6>${h}</h6>`+items.map(([k,t,href,ic,tag])=>`<a href="${href}" class="${(NAVKEY[cur]||cur)===k?'on':''}"><span class=ic>${ic}</span>${t}${tag?`<span class=tag>${tag}</span>`:''}</a>`).join(''):''}).join('');
   $('#shell').innerHTML=`<div class=app><aside class=side><div class=brand><b>On<i>Track</i></b><small>Audit management platform</small><span class=eng>Assurance engine active</span></div>
-  <nav class=nav>${navHtml}</nav>
+  <nav class=nav>${NAV.map(([h,l])=>`<h6>${h}</h6>`+l.map(([k,t,href,ic,tag])=>`<a href="${href}" class="${(NAVKEY[cur]||cur)===k?'on':''}"><span class=ic>${ic}</span>${t}${tag?`<span class=tag>${tag}</span>`:''}</a>`).join('')).join('')}</nav>
   <div class=sfoot><div class=me><span class=av>${esc(meU().n.split(' ').map(w=>w[0]).join('').slice(0,2))}</span><div><b>${esc(meU().n)}</b><small>${esc(meU().roles.join(', '))}</small></div></div></div></aside>
   <div class=main><header class=hdr><div><h1 id=pt></h1><p id=ps></p></div><div class=chips id=hc></div></header><div class=content id=mn></div></div></div>
   <div class=ov id=m hidden onclick="if(event.target.id==='m')closeM()"><div class=md id=mb role=dialog></div></div><div id=ts hidden></div>`}
@@ -188,10 +177,9 @@ function render(){
   const v=V[cur]();const nn=notes().length;
   $('#pt').textContent=v.t;$('#ps').textContent=v.s||'';
   $('#hc').innerHTML=`<span class="chip red">Acting as <select aria-label="Acting as" onchange="actAs(this.value)">${D.setup.users.filter(u=>u.on).map(u=>`<option value=${u.id} ${u.id===D.me?'selected':''}>${esc(u.n)}</option>`).join('')}</select></span><button class="chip bell" onclick=showNotes() aria-label="Notifications">🔔 <b>${nn}</b></button><span class="chip ok">Audit engine connected</span>`;
-  const platformBlocked=systemAdmin(meU())&&['risks','ctrls','plan','engs','finds'].includes(v.m);
-  $('#mn').innerHTML=platformBlocked?`<div class=card><h3>Record workspace restricted</h3><p class=sub>Super Admin manages platform architecture and configuration, not individual records. Record-level access and decisions belong to the assigned Owner, Editor, Reviewer, or Approver.</p><a class=btn href="setup.html">Open platform setup</a></div>`:v.m&&!can(v.m,1)?`<div class=card><h3>Access restricted</h3><p class=sub>Your role (${esc(meU().roles.join(', '))}) has no access to ${esc(v.t)}. Use the "Acting as" selector to switch user.</p></div>`:v.h;
+  $('#mn').innerHTML=v.m&&!can(v.m,1)?`<div class=card><h3>Access restricted</h3><p class=sub>Your role (${esc(meU().roles.join(', '))}) has no access to ${esc(v.t)}. Use the "Acting as" selector to switch user.</p></div>`:v.h;
   if(v.after)v.after()}
-const actAs=id=>{D.me=id;save();if(V[cur].onUser)V[cur].onUser();shell();render()};
+const actAs=id=>{D.me=id;save();if(V[cur].onUser)V[cur].onUser();render();shell_keep()};
 const shell_keep=()=>{$$('.nav a').forEach(()=>0);const me=meU();const m=$('.me');if(m)m.innerHTML=`<span class=av>${esc(me.n.split(' ').map(w=>w[0]).join('').slice(0,2))}</span><div><b>${esc(me.n)}</b><small>${esc(me.roles.join(', '))}</small></div>`};
 function start(key){cur=key;shell();render()}
 /* simple CSV parser (quotes, commas, newlines) */
