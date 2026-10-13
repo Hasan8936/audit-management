@@ -4,11 +4,12 @@ const COLS={id:['Risk ID',r=>`<span class=mono>${r.id}</span>`],n:['Risk',r=>`<b
  persp:['Entity / business unit',r=>esc([r.persp.ent,r.persp.bu].filter(Boolean).join(' / '))||'-'],proc:['Process',r=>esc(r.persp.proc)||'-'],owner:['Business owner',r=>esc(r.owner)||'-'],
  inh:['Inherent',r=>pill(lv(iS(r)))+' '+iS(r)],res:['Residual',r=>pill(lv(rS(r)))+' '+rS(r)],ctx:['Context priority',r=>ctxScore(r)],
  st:['Status',r=>pill(r.st)],nr:['Next assessment',r=>r.nr+(r.st==='Active'&&r.nr<TODAY?' '+pill('Overdue'):'')],cd:['Created',r=>r.cd],ver:['Version',r=>'v'+r.ver]};
+const BASE_RISK_COLS=['id','n','type','persp','res','ctx','st','owner'];
 const openF=r=>D.finds.filter(f=>f.r===r.id&&f.s!=='Closed').length;
 const ctxScore=r=>{let s=rS(r)+2*openF(r)+D.ctrls.filter(c=>c.r===r.id&&c.e==='Ineffective').length+2*D.kris.filter(k=>k.r===r.id&&k.val>k.thr).length;
   if(r.cx==='Concentration-aware')s+=2*(D.risks.filter(x=>x.id!==r.id&&x.st==='Active'&&x.persp.proc&&x.persp.proc===r.persp.proc).length);return s};
 const flat=r=>[r.id,r.n,r.desc,r.owner,r.ev,r.type,...r.cons.map(c=>c.t),...Object.values(r.persp),...Object.values(r.f||{})].join(' ').toLowerCase();
-let RL={q:'',type:'',st:'',rt:'',own:'',ent:'',from:'',to:'',adv:0,cols:['id','n','type','persp','res','ctx','st','owner'],gb:'',sort:'id',view:'',pick:0};
+let RL={q:'',type:'',st:'',rt:'',own:'',ent:'',from:'',to:'',adv:0,cols:[...BASE_RISK_COLS],gb:'',sort:'id',view:'',pick:0};
 const sortKey={id:r=>r.id,n:r=>r.n.toLowerCase(),res:r=>-rS(r),inh:r=>-iS(r),ctx:r=>-ctxScore(r),nr:r=>r.nr,st:r=>r.st};
 function filtered(){return D.risks.filter(r=>recordCan(r,'view')).filter(r=>(!RL.q||flat(r).includes(RL.q.toLowerCase()))&&(!RL.type||r.type===RL.type)&&(!RL.st||r.st===RL.st)&&(!RL.rt||lv(rS(r))===RL.rt)&&(!RL.own||r.owner===RL.own)&&(!RL.ent||r.persp.ent===RL.ent||r.persp.bu===RL.ent||r.persp.dept===RL.ent)&&(!RL.from||r.cd>=RL.from)&&(!RL.to||r.cd<=RL.to))
   .sort((a,b)=>{const k=sortKey[RL.sort]||sortKey.id,x=k(a),y=k(b);return x<y?-1:x>y?1:0})}
@@ -43,18 +44,19 @@ const saveViewGo=()=>{const n=$('#vw_n').value.trim();if(!n)return toast('Enter 
 const exportRisks=()=>csvOut('risk-register.csv',[['Risk ID','Name','Type','Status','Business owner','Entity','Business unit','Department','Process','Inherent','Residual','Next assessment'],...filtered().map(r=>[r.id,r.n,r.type,r.st,r.owner,r.persp.ent,r.persp.bu,r.persp.dept,r.persp.proc,iS(r),rS(r),r.nr])]);
 
 /* ---------- add / edit risk ---------- */
-let RF=null,RFE=null,RFC=null;
+let RF=null,RFE=null,RFC=null,RFW={editor:'',viewer:'',reviewer:'',approver:''};
 const blankR=()=>mkR('',{id:'',st:'Draft',cx:lkv('Context model')[0]||'',am:lkv('Analysis model')[0]||'',type:'',owner:'',persp:{},cons:[{cat:'',t:''}],inh:[3,3],res:[2,2],nr:day(180),f:{},cmt:[],hist:[],cd:TODAY});
 function initRF(){if(RF)return;const q=QS(),e=q.get('id'),c=q.get('copy');RFE=e;RFC=c;
   if(e&&rk(e)){RF=JSON.parse(JSON.stringify(rk(e)))}
-  else if(c&&rk(c)){RF=JSON.parse(JSON.stringify(rk(c)));RF.id='';RF.n=RF.n+' (copy)';RF.st='Draft';RF.ap=0;RF.ver=1;RF.hist=[];RF.cmt=[];RF.cd=TODAY;RF.nr=day(180)}
-  else{RF=blankR();cfs('Risk').forEach(c=>{if(c.def)RF.f[c.id]=c.def})}RF.init='';
+  else if(c&&rk(c)){RF=JSON.parse(JSON.stringify(rk(c)));RF.id='';RF.n=RF.n+' (copy)';RF.st='Draft';RF.ap=0;RF.ver=1;RF.hist=[];RF.cmt=[];RF.cd=TODAY;RF.nr=day(180);RFW={editor:'',viewer:'',reviewer:'',approver:''}}
+  else{RF=blankR();RFW={editor:'',viewer:'',reviewer:'',approver:''};cfs('Risk').forEach(c=>{if(c.def)RF.f[c.id]=c.def})}RF.init='';
   RF.snap=JSON.stringify([RF.n,RF.desc,RF.type,RF.am,RF.cx,RF.ev,RF.cons,RF.inh,RF.res,RF.persp])}
 const kidsOf=(t,pn)=>{const O=D.setup.org,p=O.find(o=>o.n===pn&&o.t===t-1);return(p?O.filter(o=>o.p===p.id):O.filter(o=>o.t===t)).map(o=>o.n)};
 const rfSet=(k,v,re)=>{RF[k]=v;if(re)render()};
 const rfP=(k,v)=>{RF.persp[k]=v;if(k==='ent'){RF.persp.bu='';RF.persp.dept=''}if(k==='bu')RF.persp.dept='';render()};
 const rfA=(i,j,v)=>{RF[i][j]=+v;render()};
 const rfC=(i,k,v)=>{RF.cons[i][k]=v};
+const rfRoleField=(role,key)=>{const users=D.setup.users.filter(u=>u.on&&u.id!==meU().id&&u.roles.includes(role)&&withinScope(RF,u));return fld(role,`<select id=rf_${key} onchange="RFW.${key}=this.value"><option value="">Select ${role}</option>${users.map(u=>`<option value="${u.id}" ${RFW[key]===u.id?'selected':''}>${esc(u.n)}</option>`).join('')}</select>`,1)};
 function simWarn(){const m=D.setup.meth,w=new Set(RF.n.toLowerCase().split(/\W+/).filter(x=>x.length>3));if(!w.size)return'';
   const hit=D.risks.filter(r=>r.st!=='Inactive'&&r.id!==RFE&&(()=>{const o=new Set(r.n.toLowerCase().split(/\W+/).filter(x=>x.length>3));const i=[...w].filter(x=>o.has(x)).length;return i*100/Math.max(w.size,o.size)>=m.sim})());
   return hit.length?`<div class=warn>Similar active risk: ${hit.map(r=>`<a href="risk.html?id=${r.id}" target=_blank>${r.id} ${esc(r.n)}</a>`).join(', ')}. Check it is not a duplicate before saving.</div>`:''}
@@ -80,6 +82,7 @@ V['risk-form']=()=>{initRF();const e=RFE&&rk(RFE),m=D.setup.meth,P=RF.persp;
  <div class=card><h3>Perspectives and organization</h3><p class=sub>Selecting a legal entity filters the business units, and a business unit filters its departments. Used for reporting, security, ownership and audit planning.</p>
   <div class=three>${ps('ent','Legal entity',kidsOf(2,''))}${ps('bu','Business unit',kidsOf(3,P.ent))}${ps('dept','Department',kidsOf(4,P.bu))}</div>
   <div class=four>${ps('fn','Function',lkv('Function'))}${ps('loc','Location',lkv('Location'))}${ps('reg','Region',lkv('Region'))}${ps('proc','Process',lkv('Process'))}</div><div class=three>${ps('sub','Sub-process',lkv('Sub-process'))}</div></div>
+ ${!e?`<div class="card workflow-team"><div class=wf-team-head><div><h3>Five-person workflow team</h3><p class=sub>The Owner creates this draft. Assign four different, in-scope users to edit, view, review, and approve it.</p></div><span class="pill h">Separation of duties</span></div><div class="four">${rfRoleField('Editor','editor')}${rfRoleField('Viewer','viewer')}${rfRoleField('Reviewer','reviewer')}${rfRoleField('Approver','approver')}</div><p class=help>All four roles are required. Reviewer and Approver remain separate decision permissions.</p></div>`:''}
  <div class=card><h3>Event and consequences</h3><p class=sub>Describe what could happen separately from what it would cause. These feed assessment, reports and audit planning.</p>
   ${fld('Risk event: what could happen',`<textarea ${dis} oninput="RF.ev=this.value">${esc(RF.ev)}</textarea>`,1)}
   ${RF.cons.map((c,i)=>`<div class=row style="align-items:flex-start"><select ${dis} style="width:180px" onchange="rfC(${i},'cat',this.value)"><option value="">Category${lkv('Consequence category').map(x=>`<option ${x===c.cat?'selected':''}>${esc(x)}`).join('')}</select><input ${dis} style="flex:1;min-width:200px;width:auto" placeholder="Consequence if the event occurs" value="${esc(c.t)}" oninput="rfC(${i},'t',this.value)">${RF.cons.length>1&&!lock?`<button class="btn g s" onclick="RF.cons.splice(${i},1);render()">Remove</button>`:''}</div>`).join('')}
@@ -91,37 +94,43 @@ V['risk-form']=()=>{initRF();const e=RFE&&rk(RFE),m=D.setup.meth,P=RF.persp;
  ${cfs('Risk').length?`<div class=card><h3>Additional fields</h3><p class=sub>Configured by administrators in Setup.</p>${cfIn('Risk',RF.f,"RF.f[",dis).replace(/onchange="RF\.f\[('CF-[^']+'),cfRead\(this\)\)"/g,"onchange=\"RF.f[$1]=cfRead(this)\"")}</div>`:''}
  ${!e?`<div class=card><h3>Comment</h3><p class=sub>Optional context for reviewers. It is stored separately from the description.</p><textarea oninput="RF.init=this.value"></textarea></div>`:''}
  <div class=act><a class="btn g" href="${e?'risk.html?id='+e.id:'risks.html'}">Cancel</a><button class=btn ${dis} onclick=saveRisk()>${e?'Save changes':'Save as draft'}</button></div>`}};
-function saveRisk(){const m=D.setup.meth,R=RF,e=RFE&&rk(RFE);if(!(e?recordCan(e,'edit'):recordCan(null,'create'))||e&&['Inactive','Pending Review','Pending Approval'].includes(e.st))return toast('You do not have permission to edit this risk.');
+function saveRisk(){const er=[],m=D.setup.meth,R=RF,e=RFE&&rk(RFE);if(!(e?recordCan(e,'edit'):recordCan(null,'create'))||e&&['Inactive','Pending Review','Pending Approval'].includes(e.st))return toast('You do not have permission to edit this risk.');
   if(!R.n.trim())er.push('Risk name');if(!R.desc.trim())er.push('Risk description');if(!R.type)er.push('Risk type');if(!R.am)er.push('Analysis model');if(!R.cx)er.push('Context model');if(!R.ev.trim())er.push('Risk event');
   if(!R.cons.some(c=>c.t.trim()&&c.cat))er.push('at least one consequence with a category');
   if(!(R.persp.ent||R.persp.bu||R.persp.dept))er.push('an organization perspective');
   if(!withinScope(R))er.push('an organization perspective within your data scope');
+  const teamKeys=['editor','viewer','reviewer','approver'],teamIDs=teamKeys.map(k=>$('#rf_'+k)?.value||'');
+  if(!e){if(teamIDs.some(id=>!id))er.push('an Editor, Viewer, Reviewer, and Approver');if(new Set([meU().id,...teamIDs]).size!==5)er.push('five different users for the workflow');teamKeys.forEach((k,i)=>{const role=k[0].toUpperCase()+k.slice(1),u=D.setup.users.find(x=>x.id===teamIDs[i]);if(u&&(!u.on||!u.roles.includes(role)||!withinScope(R,u)))er.push(`an active, in-scope ${role}`)})}
   if(cfMiss('Risk',R.f))er.push('required additional fields');
   if(er.length)return toast('Complete: '+er.join(', ')+'.');
   if(rS(R)>iS(R))return toast('Residual score cannot exceed inherent score.');
   R.cons=R.cons.filter(c=>c.t.trim());R.n=R.n.trim();
   const snap=JSON.stringify([R.n,R.desc,R.type,R.am,R.cx,R.ev,R.cons,R.inh,R.res,R.persp]),mat=snap!==R.snap;
   const clean=o=>{delete o.snap;delete o.init};
-  if(!e){const r=JSON.parse(JSON.stringify(R));r.id=rkId();r.st='Draft';r.ver=1;r.cd=TODAY;r.ap=0;r.access={owner:meU().roles.includes('Owner')?meU().id:'',editors:[],viewers:[],reviewers:[],approvers:[]};r.review=[];r.hist=[{ver:1,d:TODAY,u:meU().n,inh:r.inh,res:r.res,am:r.am,n:'Initial assessment'}];r.cmt=R.init.trim()?[{id:uid('CM'),p:null,u:meU().n,d:new Date().toISOString().slice(0,16).replace('T',' '),t:R.init.trim(),h:[]}]:[];clean(r);D.risks.push(r);log(r.id,`Risk created as draft${RFC?' (copied from '+RFC+')':''}`);RF=null;location='risk.html?id='+r.id;return}
-  const old=JSON.stringify([e.inh,e.res,e.am]);Object.assign(e,JSON.parse(JSON.stringify(R)));clean(e);
-  if(JSON.stringify([e.inh,e.res,e.am])!==old){e.hist.push({ver:e.ver+(e.st==='Active'&&mat?1:0),d:TODAY,u:meU().n,inh:e.inh,res:e.res,am:e.am,n:'Assessment changed in edit'})}
-  if(e.st==='Active'&&mat){e.ver++;e.st='Pending Review';e.ap=0;log(e.id,`Risk edited, new version v${e.ver} sent for review`)}else log(e.id,'Risk edited');
+  if(!e){const r=JSON.parse(JSON.stringify(R));r.id=rkId();r.st='Draft';r.ver=1;r.cd=TODAY;r.ap=0;r.access={owner:meU().id,editors:[teamIDs[0]],viewers:[teamIDs[1]],reviewers:[teamIDs[2]],approvers:[teamIDs[3]]};r.wf={editorEditedVersion:0,viewerViewedBy:[]};r.review=[];r.hist=[{ver:1,d:TODAY,u:meU().n,inh:r.inh,res:r.res,am:r.am,n:'Initial assessment'}];r.cmt=R.init.trim()?[{id:uid('CM'),p:null,u:meU().n,d:new Date().toISOString().slice(0,16).replace('T',' '),t:R.init.trim(),h:[]}]:[];clean(r);D.risks.push(r);log(r.id,`Risk created as draft${RFC?' (copied from '+RFC+')':''}; workflow team assigned`);RF=null;location='risk.html?id='+r.id;return}
+  const old=JSON.stringify([e.inh,e.res,e.am]),oldStatus=e.st;Object.assign(e,JSON.parse(JSON.stringify(R)));clean(e);e.wf=e.wf||{editorEditedVersion:0,viewerViewedBy:[]};
+  if(JSON.stringify([e.inh,e.res,e.am])!==old){e.hist.push({ver:e.ver+(oldStatus==='Active'&&mat?1:0),d:TODAY,u:meU().n,inh:e.inh,res:e.res,am:e.am,n:'Assessment changed in edit'})}
+  if(oldStatus==='Active'&&mat){e.ver++;e.st='Draft';e.ap=0;e.wf.editorEditedVersion=0;e.wf.viewerViewedBy=[]}
+  if(mat){e.wf.viewerViewedBy=[];if(meU().roles.includes('Editor'))e.wf.editorEditedVersion=e.ver;else if(meU().roles.includes('Owner'))e.wf.editorEditedVersion=0}
+  if(oldStatus==='Active'&&mat)log(e.id,`Risk edited as a new version v${e.ver}; returned to the Editor workflow`);else log(e.id,mat?'Risk edited; Editor completion recorded for this version':'Risk saved without material changes');
   RF=null;location='risk.html?id='+e.id}
 
 /* ---------- risk profile ---------- */
 let rtab='ov';
 V.risk=()=>{const r=rk(QS().get('id'));if(!r)return{t:'Risk not found',s:'',m:'risks',h:'<div class=card><h3>No such risk</h3><p class=sub><a href="risks.html">Return to the risk register</a></p></div>'};
  if(!recordCan(r,'view'))return{t:r.id,s:'',m:'risks',h:'<div class=card><h3>Access restricted</h3><p class=sub>This risk is outside your scope or has not been assigned to you.</p></div>'};
- r.access=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};r.review=r.review||[];
- const u=meU(),canReview=r.st==='Pending Review'&&recordCan(r,'review'),canApprove=r.st==='Pending Approval'&&recordCan(r,'approve');
+ r.access=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};r.review=r.review||[];r.wf=r.wf||{editorEditedVersion:0,viewerViewedBy:[]};r.wf.viewerViewedBy=r.wf.viewerViewedBy||[];
+ const u=meU(),isAssignedViewer=u.roles.includes('Viewer')&&(r.access.viewers||[]).includes(u.id);
+ if(r.st==='Pending Review'&&isAssignedViewer&&!r.wf.viewerViewedBy.includes(u.id)){r.wf.viewerViewedBy.push(u.id);log(r.id,`Assigned Viewer ${u.n} opened the risk for the workflow read step`)}
+ const canReview=r.st==='Pending Review'&&recordCan(r,'review'),canApprove=r.st==='Pending Approval'&&recordCan(r,'approve');
  const userName=id=>{const x=D.setup.users.find(u=>u.id===id);return x?x.n:'Unassigned'};
  const assigned=([label,key,multi])=>`${label}: ${((multi?r.access[key]||[]:[r.access[key]]).filter(Boolean).map(userName).join(', '))||'—'}`;
  const assignments=`<div class=card><h3>Security assignment</h3><p class=sub>These record-level assignments are separate from system administration and data scope.</p><p>${assigned(['Owner','owner',false])}<br>${assigned(['Editors','editors',true])}<br>${assigned(['Viewers','viewers',true])}<br>${assigned(['Reviewers','reviewers',true])}<br>${assigned(['Approvers','approvers',true])}</p>${recordCan(r,'assign')?`<button class="btn g s" onclick="editAccess('${r.id}')">Assign / reassign users</button>`:''}</div>`;
  const stageLog=r.review.length?`<div class=card><h3>Review and approval remarks</h3>${r.review.map(x=>`<p><b>v${x.version||r.ver} · ${esc(x.stage)} — ${esc(x.user)}</b> <span class=sub>${esc(x.at)}</span><br>${esc(x.text)}</p>`).join('')}</div>`:'';
- const canEdit=recordCan(r,'edit')&&!['Inactive','Pending Review','Pending Approval'].includes(r.st),canManage=recordCan(r,'deactivate'),canReassess=recordCan(r,'reassess'),canDuplicate=recordCan(null,'create'),canSubmit=r.st==='Draft'&&recordCan(r,'submit');
- const flowStage={'Draft':0,'Pending Review':1,'Pending Approval':2,'Active':3,'Inactive':3}[r.st]||0;
- const flowSteps=[['Record lifecycle','Owner creates and manages the record'],['Review stage','Assigned Reviewer validates'],['Approval stage','Assigned Approver authorizes'],[r.st==='Inactive'?'Inactive record':'Active record',r.st==='Inactive'?'Retired; history is retained':'Approved and in use']];
- const flow=`<div class=steps aria-label="Risk lifecycle">${flowSteps.map(([name,desc],i)=>`<div class=step style="${i===flowStage?'border-color:var(--ind);box-shadow:inset 0 2px var(--ind)':''}"><b>STEP ${i<flowStage?'✓':i+1}</b>${name}<div class=sub style="margin:4px 0 0">${desc}</div></div>`).join('')}</div>`;
+ const canEdit=recordCan(r,'edit')&&!['Inactive','Pending Review','Pending Approval'].includes(r.st),canManage=recordCan(r,'deactivate'),canReassess=recordCan(r,'reassess'),canDuplicate=recordCan(null,'create'),canSubmit=r.st==='Draft'&&recordCan(r,'submit')&&r.wf.editorEditedVersion===r.ver;
+ const editorDone=r.wf.editorEditedVersion===r.ver,viewerDone=viewerStepDone(r),reviewDone=r.review.some(x=>x.stage==='Review'&&x.version===r.ver),approvalDone=r.review.some(x=>x.stage==='Approval'&&x.version===r.ver),flowDone=[true,editorDone,viewerDone,reviewDone,approvalDone],flowStage=r.st==='Draft'?1:r.st==='Pending Review'?(viewerDone?3:2):r.st==='Pending Approval'?4:r.st==='Active'?5:0;
+ const flowSteps=[['Owner','Creates and assigns the record'],['Editor','Updates the risk draft'],['Viewer','Reads the submitted risk'],['Reviewer','Records a review decision'],['Approver','Approves or rejects']];
+ const flow=`<div class="workflow-stepper" aria-label="Five-person risk workflow">${flowSteps.map(([name,desc],i)=>`<div class="workflow-step ${flowDone[i]?'done':i===flowStage?'current':'waiting'}"><span class=wf-step-no>${flowDone[i]?'✓':i+1}</span><div><b>${name}</b><small>${desc}</small></div></div>`).join('')}</div>`;
  const tabs=[['ov','Overview'],['as','Assessment and history'],['rel','Relationships'],['cm','Comments'],['au','Audit trail']];
  const acts=`<div class=row><span>${pill(r.st)} ${pill(lv(rS(r)))} <span class=mono>v${r.ver}</span></span><span style="flex:1"></span>
   ${canEdit?`<a class="btn g s" href="risk-form.html?id=${r.id}">Edit</a>`:''}${canDuplicate?`<a class="btn g s" href="risk-form.html?copy=${r.id}">Duplicate</a>`:''}
@@ -130,7 +139,7 @@ V.risk=()=>{const r=rk(QS().get('id'));if(!r)return{t:'Risk not found',s:'',m:'r
   ${canReview?`<button class="btn s" onclick="reviewR('${r.id}')">Complete review</button><button class="btn g s" onclick="rejectR('${r.id}','review')">Send back</button>`:''}
   ${canApprove?`<button class="btn s" onclick="approveR('${r.id}')">Approve</button><button class="btn g s" onclick="rejectR('${r.id}','approval')">Reject / send back</button>`:''}
   ${r.st==='Inactive'&&recordCan(r,'reactivate')?`<button class="btn g s" onclick="reactR('${r.id}')">Reactivate</button>`:r.st!=='Inactive'&&canManage?`<button class="btn g s" onclick="deactR('${r.id}')">Deactivate</button>`:''}</div>
-  ${r.st==='Pending Review'?`<p class=chain>Review stage: waiting for an assigned Reviewer.</p>`:''}${r.st==='Pending Approval'?`<p class=chain>Approval stage: review is complete; waiting for an assigned Approver.</p>`:''}`;
+  ${r.st==='Draft'&&!editorDone?`<p class=chain>Next: the assigned Editor updates and saves this draft. Submission stays locked until that edit is complete.</p>`:''}${r.st==='Draft'&&editorDone?`<p class=chain>Editor update complete. The Owner or assigned Editor may submit this version into the Viewer read step.</p>`:''}${r.st==='Pending Review'&&!viewerDone?`<p class=chain>Next: the assigned Viewer must open this submitted risk. The Reviewer decision unlocks after that read step.</p>`:''}${r.st==='Pending Review'&&viewerDone?`<p class=chain>Viewer read step complete. An assigned Reviewer may now record the decision.</p>`:''}${r.st==='Pending Approval'?`<p class=chain>Review is complete; the assigned Approver now has the decision.</p>`:''}`;
  const dl=a=>`<dl>${a.map(([k,v])=>`<dt>${k}<dd>${v||'-'}`).join('')}</dl>`;const P=r.persp;let b='';
  if(rtab==='ov')b=` <div class=cards-split><div class=card><h3>Risk details</h3>${dl([['Description',esc(r.desc)],['Risk event',esc(r.ev)],['Type',esc(r.type)],['Business owner',esc(r.owner)],['Analysis model',esc(r.am)],['Context model',esc(r.cx)+' (priority '+ctxScore(r)+')'],['Created',r.cd],['Next assessment',r.nr]])}
   <div class=sec><h4>Consequences</h4>${tbl(['Category','Consequence'],r.cons.map(c=>['',esc(c.cat),esc(c.t)]),'lt')}</div></div>
@@ -161,17 +170,19 @@ function saveAccess(id){const r=R_(id);if(!recordCan(r,'assign'))return toast('O
  if(!next.owner||!D.setup.users.some(x=>x.id===next.owner&&x.on&&x.roles.includes('Owner')))return toast('Assign an active user with the Owner role.');
  const assignmentRoles={editors:'Editor',viewers:'Viewer',reviewers:'Reviewer',approvers:'Approver'};
  for(const [key,role] of Object.entries(assignmentRoles))if(next[key].some(id=>!D.setup.users.some(x=>x.id===id&&x.on&&x.roles.includes(role))))return toast(`Every ${role} assignment must be active and hold the matching role.`);
+ if(!next.editors.length||!next.viewers.length||!next.reviewers.length||!next.approvers.length)return toast('Assign at least one Editor, Viewer, Reviewer, and Approver before saving.');
  if(next.reviewers.some(id=>next.approvers.includes(id)))return toast('The same person cannot review and approve this record.');
- if(next.reviewers.includes(next.owner)||next.approvers.includes(next.owner))return toast('The record Owner cannot also review or approve it.');
  const assigneeIds=[next.owner,...next.editors,...next.viewers,...next.reviewers,...next.approvers];
+ if(new Set(assigneeIds).size!==assigneeIds.length)return toast('Assign different users to the Owner, Editor, Viewer, Reviewer, and Approver roles.');
  if(assigneeIds.some(uid=>!withinScope(r,D.setup.users.find(x=>x.id===uid))))return toast('Every assignee must have data scope that includes this record.');
- const oldOwner=r.access.owner;r.access=next;log(id,oldOwner!==next.owner?`Ownership transferred to ${D.setup.users.find(x=>x.id===next.owner).n}`:'Record security assignments updated');closeM();render()
+ const previous=r.access,editorChanged=JSON.stringify(previous.editors||[])!==JSON.stringify(next.editors),viewerChanged=JSON.stringify(previous.viewers||[])!==JSON.stringify(next.viewers),oldOwner=previous.owner;r.access=next;r.wf=r.wf||{editorEditedVersion:0,viewerViewedBy:[]};if(editorChanged)r.wf.editorEditedVersion=0;if(viewerChanged)r.wf.viewerViewedBy=[];log(id,oldOwner!==next.owner?`Ownership transferred to ${D.setup.users.find(x=>x.id===next.owner).n}`:'Record security assignments updated');closeM();render()
 }
 function submitR(id){const r=R_(id);if(r.st!=='Draft'||!recordCan(r,'submit'))return toast('Only the Owner or an assigned Editor can submit this draft.');
- const eligible=(ids,role)=>ids.some(id=>D.setup.users.some(x=>x.id===id&&x.on&&x.roles.includes(role)&&withinScope(r,x)));
- if(!eligible(r.access.reviewers||[],'Reviewer')||!eligible(r.access.approvers||[],'Approver'))return toast('Assign an active, in-scope Reviewer and Approver before submission.');
- if((r.access.reviewers||[]).some(id=>(r.access.approvers||[]).includes(id)))return toast('The same person cannot review and approve this record.');
- r.st='Pending Review';r.ap=0;log(id,'Submitted for review');render()}
+ const eligible=(ids,role)=>ids.length&&ids.some(id=>D.setup.users.some(x=>x.id===id&&x.on&&x.roles.includes(role)&&withinScope(r,x)));
+ if(!eligible(r.access.editors||[],'Editor')||!eligible(r.access.viewers||[],'Viewer')||!eligible(r.access.reviewers||[],'Reviewer')||!eligible(r.access.approvers||[],'Approver'))return toast('Assign an active, in-scope Editor, Viewer, Reviewer, and Approver before submission.');
+ const people=[r.access.owner,...r.access.editors,...r.access.viewers,...r.access.reviewers,...r.access.approvers];if(new Set(people).size!==people.length)return toast('Assign different people to the five workflow roles.');
+ if(r.wf?.editorEditedVersion!==r.ver)return toast('The assigned Editor must update and save this draft before it can be submitted.');
+ r.st='Pending Review';r.ap=0;r.wf.viewerViewedBy=[];log(id,'Submitted for Viewer read step and Reviewer decision');render()}
 const reviewR=id=>{const r=R_(id);if(r.st!=='Pending Review'||!recordCan(r,'review'))return toast('Only an assigned Reviewer can complete this review.');
  openM(`<h2>Complete risk review</h2>${fld('Review remarks','<textarea id=rv_n></textarea>',1)}<div class=act><button class="btn g" onclick=closeM()>Cancel</button><button class=btn onclick="reviewGo('${id}')">Complete review</button></div>`)};
 function reviewGo(id){const r=R_(id),t=$('#rv_n').value.trim();if(r.st!=='Pending Review'||!recordCan(r,'review'))return toast('Only an assigned Reviewer can complete this review.');if(!t)return toast('Enter review remarks.');
@@ -182,8 +193,8 @@ function approveGo(id){const r=R_(id),t=$('#ap_n').value.trim();if(r.st!=='Pendi
  r.review.push({stage:'Approval',user:meU().n,at:nowS(),text:t,version:r.ver});r.st='Active';r.ap=0;log(id,'Risk approved and active: '+t);closeM();toast(id+' is now active');render()}
 const rejectR=(id,stage)=>{const r=R_(id),action=stage==='review'?'review':'approve';if(!recordCan(r,action))return toast(stage==='review'?'Only an assigned Reviewer can send this risk back.':'Only an assigned Approver can reject this risk.');
  openM(`<h2>${stage==='review'?'Send back from review':'Reject / send back from approval'}</h2>${fld('Reason','<textarea id=rj></textarea>',1)}<div class=act><button class="btn g" onclick=closeM()>Cancel</button><button class=btn onclick="rejectGo('${id}','${stage}')">Send back</button></div>`)};
-const rejectGo=(id,stage)=>{const r=R_(id),t=$('#rj').value.trim(),action=stage==='review'?'review':'approve',expected=stage==='review'?'Pending Review':'Pending Approval';if(r.st!==expected||!recordCan(r,action))return toast('You do not have permission to send this risk back.');if(!t)return toast('Enter a reason.');
- r.review.push({stage:stage==='review'?'Review returned':'Approval rejected',user:meU().n,at:nowS(),text:t,version:r.ver});r.st='Draft';r.ap=0;log(id,`Sent back to draft from ${stage}: ${t}`);closeM();render()};
+ const rejectGo=(id,stage)=>{const r=R_(id),t=$('#rj').value.trim(),action=stage==='review'?'review':'approve',expected=stage==='review'?'Pending Review':'Pending Approval';if(r.st!==expected||!recordCan(r,action))return toast('You do not have permission to send this risk back.');if(!t)return toast('Enter a reason.');
+ r.review.push({stage:stage==='review'?'Review returned':'Approval rejected',user:meU().n,at:nowS(),text:t,version:r.ver});r.st='Draft';r.ap=0;r.wf.editorEditedVersion=0;r.wf.viewerViewedBy=[];log(id,`Sent back to draft from ${stage}: ${t}; Editor update is required`);closeM();render()};
 const deactR=id=>{const r=R_(id);if(!recordCan(r,'deactivate')||!['Active','Draft'].includes(r.st))return toast('Only the Owner or a Super Admin can deactivate this risk.');const f=openF(r);if(f)return toast(`${f} open finding(s) are linked. Close or re-link them before deactivating.`);openM(`<h2>Deactivate ${id}</h2><p class=sub>The risk is retired from active use. Its history, links and audit trail are kept.</p>${fld('Reason','<textarea id=dr></textarea>',1)}<div class=act><button class="btn g" onclick=closeM()>Cancel</button><button class=btn onclick="deactGo('${id}')">Deactivate</button></div>`)};
 const deactGo=id=>{const r=R_(id),t=$('#dr').value.trim();if(!recordCan(r,'deactivate')||!['Active','Draft'].includes(r.st))return toast('Only the Owner or a Super Admin can deactivate this risk.');const f=openF(r);if(f)return toast(`${f} open finding(s) are linked. Close or re-link them before deactivating.`);if(!t)return toast('Enter a reason.');r.st='Inactive';log(id,'Deactivated: '+t);closeM();render()};
 const reactR=id=>{const r=R_(id);if(r.st!=='Inactive'||!recordCan(r,'reactivate'))return toast('Only the Owner or a Super Admin can reactivate this risk.');r.st='Draft';log(id,'Reactivated as draft');render()};

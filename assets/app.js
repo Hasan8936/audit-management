@@ -10,6 +10,7 @@ const FS=['Draft','Auditor Review','Management Response','Approved','Remediation
 const ES=['Draft','Planning','Fieldwork','Review','Reporting','Management Response','Closed'];
 const CFT=['Text','Long text','Number','Date','Boolean','Dropdown','Multi-select'];
 const RECORD_ROLES=['Super Admin','Owner','Editor','Viewer','Reviewer','Approver'];
+const WORKFLOW_ROLES=['Owner','Editor','Viewer','Reviewer','Approver'];
 const RECORD_MATRIX=[
  ['Create record',['Super Admin','Owner']],['View assigned record',['Super Admin','Owner','Editor','Viewer','Reviewer','Approver']],
  ['Edit record details',['Super Admin','Owner','Editor']],['Assign users',['Super Admin','Owner']],['Modify security assignments',['Super Admin','Owner']],
@@ -86,10 +87,11 @@ function upgrade(d){
   d.setup.users.forEach(u=>{const n=demoNames[u.id];if(n&&u.n===n[0])u.n=n[1]});
   const defaults={'Super Admin':P('333333'),Owner:rolePerms(2),Editor:rolePerms(2),Viewer:rolePerms(1),Reviewer:rolePerms(1),Approver:rolePerms(1)};
   Object.entries(defaults).forEach(([r,p])=>{if(!d.setup.roles[r])d.setup.roles[r]=p});
-  d.risks.forEach(r=>{r.access=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};r.review=r.review||[]});
+  d.risks.forEach(r=>{r.access=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};r.review=r.review||[];r.wf=r.wf||{editorEditedVersion:r.st==='Draft'?0:r.ver,viewerViewedBy:[]};r.wf.viewerViewedBy=r.wf.viewerViewedBy||[]});
   return d
 }
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}};
+if(D.log.length===1&&D.log[0].u==='System'){if(D.me==='U-00')D.me='U-01';const demo=D.risks.find(r=>r.id==='RSK-000001');if(demo&&demo.st==='Active'){demo.st='Draft';demo.wf={editorEditedVersion:0,viewerViewedBy:[]}}save()}
 const meU=()=>D.setup.users.find(u=>u.id===D.me)||D.setup.users[0];
 const log=(id,m)=>{D.log.unshift({t:new Date().toISOString().slice(0,16).replace('T',' '),u:meU().n,id,m});save()};
 const uid=p=>p+'-'+Math.random().toString(36).slice(2,7);
@@ -103,15 +105,17 @@ const kids=id=>D.setup.org.filter(o=>o.p===id).flatMap(o=>[o.n,...kids(o.id)]);
 const scopeNames=u=>{const o=D.setup.org.find(x=>x.n===u.sc);return o?(o.t===0?null:[o.n,...kids(o.id)]):[]};
 const withinScope=(r,u=meU())=>{const s=scopeNames(u);if(s===null)return true;const p=r.persp||{};return [p.ent,p.bu,p.dept].some(v=>v&&s.includes(v))};
 const systemAdmin=u=>u.roles.some(r=>r==='Super Admin'||r==='Administrator');
+const viewerStepDone=r=>(r.wf?.viewerViewedBy||[]).some(id=>(r.access?.viewers||[]).includes(id));
+const workflowRoleOf=u=>WORKFLOW_ROLES.find(r=>u.roles.includes(r))||'';
 const recordCan=(r,action,u=meU())=>{
   if(!u||!u.on)return false;
   const scoped=!r||withinScope(r,u),roles=u.roles||[],dedicated=roles.some(x=>RECORD_ROLES.includes(x));
   if(!scoped)return false;
-  if(action==='create')return roles.includes('Owner')||roles.includes('Super Admin')||(!dedicated&&can('risks',2));
+  if(action==='create')return roles.includes('Owner');
   if(!r)return false;
   const a=r.access||{owner:'',editors:[],viewers:[],reviewers:[],approvers:[]};
   const assigned=(role,ids)=>roles.includes(role)&&ids.includes(u.id);
-  if(action==='review')return !roles.includes('Owner')&&a.owner!==u.id&&!roles.includes('Approver')&&assigned('Reviewer',a.reviewers||[]);
+  if(action==='review')return !roles.includes('Owner')&&a.owner!==u.id&&!roles.includes('Approver')&&assigned('Reviewer',a.reviewers||[])&&viewerStepDone(r);
   if(action==='approve')return !roles.includes('Owner')&&a.owner!==u.id&&!roles.includes('Reviewer')&&assigned('Approver',a.approvers||[]);
   if(systemAdmin(u))return ['view','edit','assign','deactivate','reactivate','submit','reassess'].includes(action);
   if(roles.includes('Owner')&&a.owner===u.id)return ['view','edit','assign','deactivate','reactivate','submit','reassess'].includes(action);
@@ -120,6 +124,7 @@ const recordCan=(r,action,u=meU())=>{
   return !dedicated&&can('risks',action==='view'?1:action==='edit'||action==='submit'||action==='reassess'?2:action==='deactivate'||action==='reactivate'?3:99);
 };
 const visible=r=>recordCan(r,'view');
+const workflowQueueFor=(u=meU())=>{const role=workflowRoleOf(u),R=D.risks.filter(r=>recordCan(r,'view',u)),q={Owner:['Owner tasks',R.filter(r=>r.st==='Draft'&&r.access?.owner===u.id)],Editor:['Drafts to edit',R.filter(r=>r.st==='Draft'&&(r.access?.editors||[]).includes(u.id))],Viewer:['Risks to view',R.filter(r=>r.st==='Pending Review'&&!(r.wf?.viewerViewedBy||[]).includes(u.id))],Reviewer:['Reviews ready',R.filter(r=>r.st==='Pending Review'&&viewerStepDone(r)&&(r.access?.reviewers||[]).includes(u.id))],Approver:['Approvals waiting',R.filter(r=>r.st==='Pending Approval'&&(r.access?.approvers||[]).includes(u.id))]};return role?q[role]:['My workflow',[]]};
 /* scoring */
 const MODELS={'Standard 5x5':(l,i)=>l*i,'Impact-weighted':(l,i)=>Math.min(25,Math.round(l*i*(i>=4?1.25:1)))};
 const sc=(a,m)=>(MODELS[m]||MODELS['Standard 5x5'])(a[0],a[1]);
@@ -137,7 +142,7 @@ const openM=(h,w)=>{$('#mb').className='md'+(w?' w':'');$('#mb').innerHTML=h;$('
 const closeM=()=>{$('#m').hidden=true};
 function toast(m){const e=$('#ts');e.textContent=m;e.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>e.hidden=true,4000)}
 const tbl=(h,rows,cls='')=>`<div class=tw><table class="${cls}"><tr>${h.map(x=>`<th>${x}`).join('')}${rows.map(r=>`<tr ${r[0]?`class=k onclick="${r[0]}"`:''}>${r.slice(1).map(c=>`<td>${c}`).join('')}`).join('')}</table></div>`;
-const bars=rows=>{const mx=Math.max(1,...rows.map(r=>r[1]));return rows.map(([l,n,k,a])=>`<div class="bar ${k}" onclick="${a}"><span>${l}</span><em><u style="width:${n*100/mx}%"></u></em><b>${n}</b></div>`).join('')};
+const bars=rows=>{const mx=Math.max(1,...rows.map(r=>r[1]));return`<div class=horizontal-bars role=group>${rows.map(([l,n,k,a])=>`<button class="bar ${k}" aria-label="${esc(l)}: ${n}" title="${esc(l)} · ${n}" onclick="${a}"><span class=bar-label>${esc(l)}</span><span class=bar-track><span class=bar-fill style="width:${n*100/mx}%"></span></span><b>${n}</b></button>`).join('')}</div>`};
 const csvOut=(name,rows)=>{const t=rows.map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=name;a.click()};
 /* custom fields (flexfields) */
 const cfs=o=>D.setup.cf.filter(c=>c.obj===o);
@@ -154,27 +159,27 @@ const cfGet=o=>Object.fromEntries(cfs(o).map(c=>[c.id,cfRead($('#cf_'+c.id))]));
 const cfMiss=(o,x)=>cfs(o).some(c=>c.req&&!String(x[c.id]||'').trim());
 /* notifications (assessment, approval, overdue, escalation) */
 function notes(){const n=[],u=meU();
-  D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Review'&&((r.access&&r.access.reviewers)||[]).includes(u.id)).forEach(r=>n.push(['Review',`${r.id} ${r.n} awaits your review.`,`risk.html?id=${r.id}`]));
+  D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Review'&&((r.access&&r.access.viewers)||[]).includes(u.id)&&!(r.wf?.viewerViewedBy||[]).includes(u.id)).forEach(r=>n.push(['Viewer read',`${r.id} ${r.n} is ready for your read step.`,`risk.html?id=${r.id}`]));
+  D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Review'&&viewerStepDone(r)&&((r.access&&r.access.reviewers)||[]).includes(u.id)).forEach(r=>n.push(['Review',`${r.id} ${r.n} awaits your review.`,`risk.html?id=${r.id}`]));
   D.risks.filter(r=>recordCan(r,'view')&&r.st==='Pending Approval'&&((r.access&&r.access.approvers)||[]).includes(u.id)).forEach(r=>n.push(['Approval',`${r.id} ${r.n} awaits your approval.`,`risk.html?id=${r.id}`]));
   D.risks.filter(r=>recordCan(r,'view')&&r.st==='Active'&&r.nr<TODAY).forEach(r=>n.push(['Assessment due',`${r.id} reassessment was due ${r.nr}.`,`risk.html?id=${r.id}`]));
-  D.finds.filter(od).forEach(f=>n.push([f.sv==='Critical'||f.sv==='High'?'Escalation':'Overdue',`${f.id} action overdue since ${f.due} (${f.sv}).`,'findings.html']));
+  D.finds.filter(f=>od(f)&&recordCan(rk(f.r),'view')).forEach(f=>n.push([f.sv==='Critical'||f.sv==='High'?'Escalation':'Overdue',`${f.id} action overdue since ${f.due} (${f.sv}).`,'findings.html']));
   D.kris.filter(k=>k.val>k.thr&&recordCan(rk(k.r),'view')).forEach(k=>n.push(['KRI breach',`${k.n}: ${k.val} against threshold ${k.thr}.`,`risk.html?id=${k.r}`]));return n}
 const showNotes=()=>{const n=notes();openM(`<h2>Notifications</h2><p class=sub>Assessment, approval, overdue and escalation alerts for ${esc(meU().n)}.</p>${n.length?tbl(['Type','Message'],n.map(x=>[`location='${x[2]}'`,pill(x[0]==='Escalation'||x[0]==='KRI breach'?'Critical':'Medium').replace(/>[^<]*</,'>'+x[0]+'<'),esc(x[1])])):'<p class=sub>Nothing needs attention.</p>'}<div class=act><button class="btn g" onclick=closeM()>Close</button></div>`)};
 
 /* ---------- shell ---------- */
-const NAV=[['Overview',[['dash','Dashboard','index.html','📊']]],
- ['Risk and assurance',[['risks','Risk register','risks.html','⚠️'],['ctrls','Control library','controls.html','🛡️'],['plan','Audit plan','plan.html','🗓️'],['engs','Engagements','engagements.html','📁'],['finds','Findings and actions','findings.html','🔎']]],
- ['Administration',[['import','Import users','import-users.html','⬆️','START HERE'],['users','Users','users.html','👥'],['setup','Setup','setup.html','⚙️'],['trail','Audit trail','audit-trail.html','📜']]]];
 const V={};let cur='dash';
 const NAVKEY={risk:'risks','risk-form':'risks'};
+const navSections=()=>{const role=workflowRoleOf(meU()),q=workflowQueueFor(),recordUser=!!role,base=[['Overview',[['dash','Dashboard','index.html','📊']]],['My workflow',recordUser?[['workflow',`${role} workflow${q[1].length?` · ${q[1].length}`:''}`,'workflow.html','🔄',q[1].length||'']]:[]],['Risk and assurance',[['risks','Risk register','risks.html','⚠️'],['ctrls','Control library','controls.html','🛡️'],['plan','Audit plan','plan.html','🗓️'],['engs','Engagements','engagements.html','📁'],['finds','Findings and actions','findings.html','🔎']]],['Administration',[['import','Import users','import-users.html','⬆️','START HERE'],['users','Users','users.html','👥'],['setup','Setup','setup.html','⚙️'],['trail','Audit trail','audit-trail.html','📜']]]];return base.map(([h,items])=>[h,items.filter(([k])=>{if(recordUser)return ['dash','workflow','risks'].includes(k);return k==='dash'||k==='trail'||(['risks','ctrls','plan','engs','finds'].includes(k)?can(k==='risks'?'risks':k,1):can('setup',1))})]).filter(([,items])=>items.length)};
 function shell(){
   $('#shell').innerHTML=`<div class=app><aside class=side><div class=brand><b>On<i>Track</i></b><small>Audit management platform</small><span class=eng>Assurance engine active</span></div>
-  <nav class=nav>${NAV.map(([h,l])=>`<h6>${h}</h6>`+l.map(([k,t,href,ic,tag])=>`<a href="${href}" class="${(NAVKEY[cur]||cur)===k?'on':''}"><span class=ic>${ic}</span>${t}${tag?`<span class=tag>${tag}</span>`:''}</a>`).join('')).join('')}</nav>
+  <nav class=nav id=nav-list></nav>
   <div class=sfoot><div class=me><span class=av>${esc(meU().n.split(' ').map(w=>w[0]).join('').slice(0,2))}</span><div><b>${esc(meU().n)}</b><small>${esc(meU().roles.join(', '))}</small></div></div></div></aside>
   <div class=main><header class=hdr><div><h1 id=pt></h1><p id=ps></p></div><div class=chips id=hc></div></header><div class=content id=mn></div></div></div>
   <div class=ov id=m hidden onclick="if(event.target.id==='m')closeM()"><div class=md id=mb role=dialog></div></div><div id=ts hidden></div>`}
 function render(){
   const v=V[cur]();const nn=notes().length;
+  $('#nav-list').innerHTML=navSections().map(([h,l])=>`<h6>${h}</h6>`+l.map(([k,t,href,ic,tag])=>`<a href="${href}" class="${(NAVKEY[cur]||cur)===k?'on':''}"><span class=ic>${ic}</span>${t}${tag?`<span class=tag>${tag}</span>`:''}</a>`).join('')).join('');
   $('#pt').textContent=v.t;$('#ps').textContent=v.s||'';
   $('#hc').innerHTML=`<span class="chip red">Acting as <select aria-label="Acting as" onchange="actAs(this.value)">${D.setup.users.filter(u=>u.on).map(u=>`<option value=${u.id} ${u.id===D.me?'selected':''}>${esc(u.n)}</option>`).join('')}</select></span><button class="chip bell" onclick=showNotes() aria-label="Notifications">🔔 <b>${nn}</b></button><span class="chip ok">Audit engine connected</span>`;
   $('#mn').innerHTML=v.m&&!can(v.m,1)?`<div class=card><h3>Access restricted</h3><p class=sub>Your role (${esc(meU().roles.join(', '))}) has no access to ${esc(v.t)}. Use the "Acting as" selector to switch user.</p></div>`:v.h;
