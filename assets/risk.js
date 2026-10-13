@@ -61,7 +61,7 @@ function simWarn(){const m=D.setup.meth,w=new Set(RF.n.toLowerCase().split(/\W+/
 const rfName=v=>{RF.n=v;$('#sim').innerHTML=simWarn();$('#nc').textContent=v.length+' / '+D.setup.meth.nameMax};
 V['risk-form']=()=>{initRF();const e=RFE&&rk(RFE),m=D.setup.meth,P=RF.persp;
  const allowed=e?recordCan(e,'edit'):recordCan(null,'create');
- if(!allowed)return{t:'Access restricted',s:'',m:'risks',h:'<div class=card><h3>You cannot edit this risk</h3><p class=sub>Only its Owner, an assigned Editor, or a Super Admin can make record changes.</p><a href="risks.html">Return to the risk register</a></div>'};
+ if(!allowed)return{t:'Access restricted',s:'',m:'risks',h:'<div class=card><h3>You cannot edit this risk</h3><p class=sub>Only its Owner or an assigned Editor can make record changes. Super Admin handles platform configuration and has no record-level actions.</p><a href="risks.html">Return to the risk register</a></div>'};
  const lock=e&&(['Inactive','Pending Review','Pending Approval'].includes(e.st));
  const ls=(i,j)=>`<select ${lock?'disabled':''} onchange="rfA('${i}',${j},this.value)">${[1,2,3,4,5].map(n=>`<option ${RF[i][j]===n?'selected':''}>${n}`).join('')}</select>`;
  const ps=(k,l,a)=>fld(l,`<select ${lock?'disabled':''} onchange="rfP('${k}',this.value)"><option value="">Select${a.map(x=>`<option ${x===P[k]?'selected':''}>${esc(x)}`).join('')}</select>`);
