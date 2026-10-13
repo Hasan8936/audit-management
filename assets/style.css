@@ -144,3 +144,17 @@ dl{margin:0;display:grid;grid-template-columns:150px 1fr;gap:6px 14px}dt{color:v
 @media(max-width:1000px){.cards-split,.g2,.g3{grid-template-columns:1fr}.four,.three{grid-template-columns:1fr 1fr}}
 @media(max-width:820px){.app{grid-template-columns:1fr;grid-template-rows:auto 1fr;height:auto;min-height:100vh}.side{max-height:none}.nav{display:flex;flex-wrap:wrap;gap:4px;padding:8px}.nav h6,.brand small,.brand .eng,.sfoot{display:none}.brand{padding:12px 16px}.content{padding:16px}.hdr{padding:12px 16px}.two,.three,.four{grid-template-columns:1fr}dl{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Role-specific workspace and workflow inbox */
+.workspace-intro{display:flex;align-items:center;justify-content:space-between;gap:16px;background:linear-gradient(115deg,#fff 45%,#f4f5ff);border:1px solid var(--bd);border-radius:10px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--sh)}
+.workspace-intro h2{margin:8px 0 2px;font-size:20px;letter-spacing:-.3px}
+.workspace-intro p{margin:0;color:var(--mu);font-size:13px}
+.section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.section-heading h3{margin:0 0 3px}.section-heading .sub{margin:0}
+.workflow-counts{display:grid;grid-template-columns:repeat(4,minmax(125px,1fr));gap:10px;margin:12px 0 16px}
+.workflow-count{border:1px solid var(--bd);border-left:3px solid var(--ind);border-radius:7px;padding:10px 12px;background:#fafbfe;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.workflow-count span{color:var(--tx2);font-size:12px}.workflow-count b{font:600 22px/1 var(--mono);color:var(--ind)}
+.workflow-count.reviewer{border-left-color:#d97706}.workflow-count.reviewer b{color:#d97706}
+.workflow-count.approver{border-left-color:#8b5cf6}.workflow-count.approver b{color:#8b5cf6}
+.workflow-count.editor{border-left-color:#6366f1}.workflow-count.owner{border-left-color:#16a34a}.workflow-count.owner b{color:#16a34a}
+@media(max-width:820px){.workspace-intro{align-items:flex-start;flex-direction:column}.workflow-counts{grid-template-columns:1fr 1fr}.section-heading{align-items:flex-start;flex-direction:column}}
