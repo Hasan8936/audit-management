@@ -2,7 +2,7 @@
 const QS=()=>new URLSearchParams(location.search);
 const COLS={id:['Risk ID',r=>`<span class=mono>${r.id}</span>`],n:['Risk',r=>`<b>${esc(r.n)}</b>`],type:['Type',r=>esc(r.type)],
  persp:['Entity / business unit',r=>esc([r.persp.ent,r.persp.bu].filter(Boolean).join(' / '))||'-'],proc:['Process',r=>esc(r.persp.proc)||'-'],owner:['Business owner',r=>esc(r.owner)||'-'],
- inh:['Inherent',r=>pill(lv(iS(r)))+' '+iS(r)],res:['Residual',r=>pill(lv(rS(r)))+' '+rS(r)],ctx:['Context priority',r=>ctxScore(r)],
+ inh:['Inherent',r=>pill(lv(iS(r)))+' '+iS(r)],res:['Residual',r=>pill(lv(rS(r)))+' '+rS(r)],ctx:['Context priority',r=>`<span class=context-priority title="Context priority score">${ctxScore(r)}</span>`],
  st:['Status',r=>pill(r.st)],nr:['Next assessment',r=>r.nr+(r.st==='Active'&&r.nr<TODAY?' '+pill('Overdue'):'')],cd:['Created',r=>r.cd],ver:['Version',r=>'v'+r.ver]};
 const openF=r=>D.finds.filter(f=>f.r===r.id&&f.s!=='Closed').length;
 const ctxScore=r=>{let s=rS(r)+2*openF(r)+D.ctrls.filter(c=>c.r===r.id&&c.e==='Ineffective').length+2*D.kris.filter(k=>k.r===r.id&&k.val>k.thr).length;
@@ -17,8 +17,8 @@ V.risks=()=>{const L=filtered(),accessible=D.risks.filter(r=>recordCan(r,'view')
  sel=(k,a,b)=>`<select aria-label="${b}" onchange="RL.${k}=this.value;render()"><option value="">${b}${a.map(x=>`<option ${x===RL[k]?'selected':''}>${esc(x)}`).join('')}</select>`;
  const prof=['Critical','High','Medium','Low'].map(s=>`<span><i class="dot ${KC[s]}"></i>${s} <b>${L.filter(r=>lv(rS(r))===s).length}</b></span>`).join('');
  let body='',last=null;
- L.forEach(r=>{const g=groupOf(r);if(RL.gb&&g!==last){body+=`<tr><td colspan=${RL.cols.length+1} style="background:#F6F7FB;font-weight:700">${esc(g)}`;last=g}
-  body+=`<tr class=k onclick="location='risk.html?id=${r.id}'">${RL.cols.map(c=>`<td>${COLS[c][1](r)}`).join('')}<td onclick="event.stopPropagation()" style="white-space:nowrap">${recordCan(r,'edit')&& !['Pending Review','Pending Approval','Inactive'].includes(r.st)?`<a class="btn g s" href="risk-form.html?id=${r.id}">Edit</a> `:''}${recordCan(null,'create')?`<a class="btn g s" href="risk-form.html?copy=${r.id}">Duplicate</a>`:''}`});
+ L.forEach(r=>{const g=groupOf(r);if(RL.gb&&g!==last){body+=`<tr class=group-row><td colspan=${RL.cols.length+1}>${esc(g)}</td></tr>`;last=g}
+  body+=`<tr class="risk-row" data-risk-id="${esc(r.id)}" onclick="location='risk.html?id=${r.id}'">${RL.cols.map(c=>`<td>${COLS[c][1](r)}</td>`).join('')}<td class=risk-actions onclick="event.stopPropagation()">${recordCan(r,'edit')&& !['Pending Review','Pending Approval','Inactive'].includes(r.st)?`<a class="btn g s" href="risk-form.html?id=${r.id}">Edit</a> `:''}${recordCan(null,'create')?`<a class="btn g s" href="risk-form.html?copy=${r.id}">Duplicate</a>`:''}</td></tr>`});
  return{t:'Risk register',s:'Central register of enterprise risks. Search, filter, group and save views.',m:'risks',h:`
  <div class=kpis>${[['Active risks',accessible.filter(r=>r.st==='Active').length,'k-g'],['Pending review',accessible.filter(r=>r.st==='Pending Review').length,'k-i'],['Pending approval',accessible.filter(r=>r.st==='Pending Approval').length,'k-a'],['High or critical residual',accessible.filter(r=>r.st!=='Inactive'&&['High','Critical'].includes(lv(rS(r)))).length,'k-r'],['Assessments overdue',accessible.filter(r=>r.st==='Active'&&r.nr<TODAY).length,'k-i']].map(([l,n,c])=>`<div class="kpi ${c}"><span>${l}</span><b>${n}</b></div>`).join('')}</div>
  <div class=card><div class=tb><input class=grow placeholder="Search risk name, ID, description, owner, event or organization" value="${esc(RL.q)}" oninput="RL.q=this.value;clearTimeout(RL.h);RL.h=setTimeout(()=>{render();const i=$('.grow');i.focus();i.setSelectionRange(1e4,1e4)},300)">
@@ -34,7 +34,7 @@ V.risks=()=>{const L=filtered(),accessible=D.risks.filter(r=>recordCan(r,'view')
   <button class="btn g s" onclick="exportRisks()">Export CSV</button></div></div>
  <div class=prof><b style="font-family:inherit">Residual profile</b>${prof}</div>
  <p class=cnt>Showing <b>${L.length}</b> of ${accessible.length} risks. Your data scope: ${esc(meU().sc||'none')}.</p>
- ${L.length?`<div class=tw><table><tr>${RL.cols.map(c=>`<th>${COLS[c][0]}`).join('')}<th>Actions${body}</table></div>`:'<div class=card><h3>No risks match</h3><p class=sub>Clear a filter or add a risk to the register.</p></div>'}`}};
+ ${L.length?`<div class="tw risk-table-wrap"><table class=risk-table><thead><tr>${RL.cols.map(c=>`<th>${COLS[c][0]}</th>`).join('')}<th>Actions</th></tr></thead><tbody>${body}</tbody></table></div>`:'<div class=card><h3>No risks match</h3><p class=sub>Clear a filter or add a risk to the register.</p></div>'}`}};
 const togCol=c=>{RL.cols=RL.cols.includes(c)?RL.cols.filter(x=>x!==c):[...RL.cols,c];render()};
 const mvCol=(c,d)=>{const i=RL.cols.indexOf(c),j=i+d;if(j<0||j>=RL.cols.length)return;[RL.cols[i],RL.cols[j]]=[RL.cols[j],RL.cols[i]];render()};
 const applyView=id=>{const v=D.setup.views.find(x=>x.id===id);if(!v){RL.view='';return render()}RL={...RL,q:v.q,type:v.type,st:v.st,rt:v.rt,own:v.own,ent:v.ent,cols:[...v.cols],gb:v.gb,sort:v.sort,view:id};render()};
